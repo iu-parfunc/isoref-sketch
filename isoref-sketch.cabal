@@ -16,7 +16,7 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     IsoRef01, IsoVec02
+  exposed-modules:     IsoRef01, IsoVec02, IsoST03
   -- other-modules:       
   other-extensions:    DataKinds, ScopedTypeVariables, KindSignatures, RankNTypes, GADTs
   build-depends:       base >=4.8,
