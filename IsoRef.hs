@@ -1,40 +1,56 @@
-{-# LANGUAGE DataKinds, ScopedTypeVariables, KindSignatures, RankNTypes #-}
+{-# LANGUAGE DataKinds, ScopedTypeVariables, KindSignatures, RankNTypes, GADTs #-}
 
 -- | 
 
 module IsoRef where
 
 import Data.STRef
+import Data.IORef
 import GHC.ST
 import Control.Concurrent.MVar
--- import Data.Coerce (coerce)
+import Data.Coerce (coerce)
+-- import System.IO.Unsafe (unsafePerformIO)
+
+import Control.Monad.ST.Unsafe 
 
 --------------------------------------------------------------------------------
 
-newtype Iso a = MkIso (MVar a)
 
- -- We don't want to physically copy back and forth between
- -- IORef/MVar, so one option is to use MVar for both:
-data Ref (x :: Mode) s a = MkRef (MVar a)
+-- data Iso a = forall s . MkIso !(MVar (STRef s a))
+
+newtype Iso a = MkIso (MVar (IORef a))
+
+newtype Ref (x :: Mode) s a = MkRef (IORef a)
 
 data Mode = RD | WR | IMM
 
 --------------------------------------------------------------------------------
 
--- Could htis work for arbitrary Monad m?
+-- Could this work for arbitrary Monad m?
 toIso :: (forall s . ST s (Ref x s a)) ->  ST t (Iso a)
--- Here we can assert that it is safe to liberate the Ref:
--- toIso st = case runST (coerce st) of
---             (MkRef m) -> return (MkIso m)
-
--- But, an even simpler way to do it is this:
-toIso st = return $! MkIso $! (runST (do MkRef m <- st; return m))
-
+-- toIso = undefined $! (runST (do MkRef m <- st; return m))
+toIso st = unsafeIOToST $ do
+  -- (do MkRef m <- st; return m))
+  MkRef r <- unsafeSTToIO st
+  mv <- newMVar r
+  return $! MkIso $! mv
 
 -- | Consume the Iso and return something that can directly be
 -- operated on.
 fromIso :: Iso a -> ST s (Ref x s a)
-fromIso (MkIso m) = return (MkRef m)
+fromIso (MkIso m) = unsafeIOToST $ do
+  -- Here we are marking that no one else can read it.
+  r <- takeMVar m
+  -- Going with the dynamic theme... we could even associate a
+  -- finalizer with the reference such that when it is collected,
+  -- the Iso's MVar is restored...
+  return $! MkRef r
+
+
+inIsolation :: Iso a -> (forall s . a -> ST s b) -> b
+inIsolation = undefined
+
+{-
 
 -- Is this safe?  We would need the invariant that the Iso never stays
 -- empty.
@@ -60,3 +76,5 @@ add1 i = runST $ toIso $ do
    let new = i'' + 1
    -- Now we need
    return (MkRef undefined)
+-}
+

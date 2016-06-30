@@ -11,7 +11,7 @@ import Data.IORef
 import GHC.ST
 import Control.Concurrent.MVar
 import Control.Monad.Primitive
--- import Data.Coerce (coerce)
+import Data.Coerce (coerce)
 
 import Data.Vector as V
 import qualified Data.Vector.Mutable as VM
@@ -75,10 +75,15 @@ writeRef = undefined
 -- Vectors:
 --------------------------------------------------------------------------------
 
--- | A non-aliased pointer to mutable vector can be consumed to
--- create a mutable vector in O(1).
-safeThaw :: PrimMonad m => Iso (Vector a) -> m (MVector (PrimState m) a)
-safeThaw = undefined
+-- -- | A non-aliased pointer to an immutable vector can be consumed to
+-- -- create a mutable vector in O(1).
+-- safeThaw :: Iso (Vector a) -> (MVector s a)
+-- safeThaw (MkIso mv) = unsafePerformIO $ do
+--     vec  <- takeMVar mv
+--     unsafeThaw vec
+-- safeThaw :: PrimMonad m => Iso (Vector a) -> m (MVector (PrimState m) a)
+-- safeThaw  (MkIso mv) = coerce $ unsafePrimToPrim $ do vec  <- takeMVar mv
+--                                                       unsafeThaw vec
 
 -- | It's safe to mutate a pure vector if we're the only ones to see
 -- it happen.
