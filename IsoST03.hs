@@ -5,7 +5,9 @@
 --
 -- It is a modification of version 02.
 
-module IsoST03 where
+module IsoST03
+      (toIsoCompact', modifyIsoVec, destroyIso) -- createIsoVec
+   where
 
 import Control.DeepSeq
 import Control.Exception
@@ -24,13 +26,14 @@ import System.IO.Unsafe (unsafePerformIO)
 
 --------------------------------------------------------------------------------
 
--- This is simply a memory reference (MVar) which contains the SOLE
+-- | This is simply a memory reference (MVar) which contains the SOLE
 -- pointer to the attached data structure.  If the data structure is
 -- mutable, this signifies transitive ownership over reachable mutable
 -- locations.
 newtype Iso s a = MkIso (MVar a)
 
-
+-- | Speculate that we are the first/only reader and destructively
+-- empty the Iso.
 destroyIso :: Iso s a -> ST s a
 destroyIso (MkIso m) = do 
   x <- unsafeIOToST $ tryTakeMVar m
@@ -95,3 +98,16 @@ test = do v1 <- toIsoCompact' $ V.fromList [1..10::Int]
           v4 <- destroyIso v3
           -- v4 <- destroyIso v2 -- Deterministic exception.
           return $ show v4
+
+-- t :: (Int,Int)
+t :: Int
+t = runST $ do
+  tmp <- toIsoCompact' (99::Int)
+  let x = fmap (+1)  tmp
+      y = fmap (+10) tmp
+  x' <- destroyIso x
+  -- y' <- destroyIso y -- Deterministic failure.
+  -- return (x',y')
+  return x'
+
+
