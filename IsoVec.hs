@@ -59,12 +59,6 @@ toIso st = return $! MkIso $! (runST (do MkRef m <- st; return m))
 fromIso :: Iso a -> ST s (Ref x s a)
 fromIso (MkIso m) = return (MkRef m)
 
--- Is this safe?  We would need the invariant that the Iso never stays
--- empty.
--- instance Functor Iso where
---  fmap (MkIso m) = unsafePerformIO (takeMVar )
-
-
 readRef :: Ref RD s a -> ST s a
 readRef = undefined
 
@@ -95,32 +89,42 @@ modifyIsoVec (MkIso mv) fn = unsafePerformIO $ do
   mv2 <- newMVar vec
   return $! MkIso mv2
 
+-- Is this safe?  We would need the invariant that the Iso never stays
+-- empty.
+instance Functor Iso where
+  fmap fn i = unsafePerformIO $ do
+    a <- destroyIso i
+    unsafeFreshIso $ fn a
 
--- Sadly, we can't safely do this without a way to check that there
--- are no freevars in the pure expr:
-unsafeFreshIso :: NFData a => a -> Iso a
-unsafeFreshIso x = unsafePerformIO $
-   do evaluate (rnf x)
+-- Sadly, we can't safely do this without a way to check that (1) the
+-- input is a thunk and (2) there are no freevars in the pure expr.
+unsafeFreshIso :: a -> IO (Iso a)
+unsafeFreshIso x = -- unsafePerformIO $
+   do -- evaluate (rnf x)
       mv <- newMVar x
+      return $ MkIso mv
+
+-- | Build an alias-free version of a data structure by creating a
+-- fresh copy.  Compact is currently the only way we have to ensure
+-- that completely fresh storage is used.
+toIsoCompact :: (PrimMonad m, NFData a) => a -> m (Iso (Compact a))
+toIsoCompact a = 
+  rnf a `seq`
+   (return $ MkIso $ unsafePerformIO $ newMVar (Compact a))
+
+-- | This one would just "getCompact" before returning.  You'd
+-- think that it would be definable in terms of toIsoCompact?
+toIsoCompact' :: (NFData a) => a -> IO (Iso a)
+toIsoCompact' a =
+   do evaluate (rnf a) -- TODO: append to compact and then extract pointer.
+      mv <- newMVar a
       return $ MkIso mv
 
 -- Fake compact for now:
 newtype Compact a = Compact a
 getCompact (Compact a) = a
 
--- Build an alias-free version of a data structure by creating a
--- fresh copy.
-toIsoCompact :: (PrimMonad m, NFData a) => a -> m (Iso (Compact a))
-toIsoCompact a = 
-  rnf a `seq`
-   (return $ MkIso $ unsafePerformIO $ newMVar (Compact a))
 
--- This one would just "getCompact" first:
-toIsoCompact' :: (NFData a) => a -> IO (Iso a)
-toIsoCompact' a =
-   do evaluate (rnf a) -- TODO: append to compact and then extract pointer.
-      mv <- newMVar a
-      return $ MkIso mv
 
 -- We can really only safely create fresh Iso's for MUTABLE types.
 -- Maybe we need a class here.
@@ -136,6 +140,10 @@ test = do v1 <- toIsoCompact' $ V.fromList [1..10::Int]
           v4 <- destroyIso v3
           putStrLn $ "test: "
           print v4
+
+
+t :: Iso Int
+t = unsafePerformIO $ toIsoCompact' (99::Int)
 
 -- Example client code (Safe) 
 --------------------------------------------------------------------------------
