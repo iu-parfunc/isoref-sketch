@@ -1,8 +1,17 @@
 {-# LANGUAGE DataKinds, ScopedTypeVariables, KindSignatures, RankNTypes #-}
 
--- | 
+-- | This version separates Iso as simply a marker of (dynamic) isolation,
+--   not implying a mutable reference.  This opens up the possibility
+--   of pure data inside Iso.
+-- 
+--   It may be unsound, but it's a delicate game.  See tests below.
+--
+--   Even if it works, it gives us Iso's that only work in IO, and we
+--   want ST.
 
-module IsoVec where
+module IsoVec02
+  (toIsoCompact', modifyIsoVec, destroyIso, createIsoVec)
+  where
 
 import Control.DeepSeq
 import Control.Exception
@@ -14,7 +23,7 @@ import Control.Monad.Primitive
 import Data.Coerce (coerce)
 
 import Data.Vector as V
-import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector.Mutable as MV
 
 import Control.Monad.ST.Unsafe
 import System.IO.Unsafe (unsafePerformIO)
@@ -120,17 +129,25 @@ toIsoCompact' a =
       mv <- newMVar a
       return $ MkIso mv
 
+-- | Identitical to Data.Vector.create with a different return type.
+createIsoVec :: (forall s. ST s (MVector s a)) -> Iso (Vector a)
+createIsoVec s =
+  runST $
+    do let v = V.create s 
+       mv <- unsafeIOToST (newMVar v)
+       return (MkIso mv)
+
+
 -- Fake compact for now:
 newtype Compact a = Compact a
 getCompact (Compact a) = a
-
 
 
 -- We can really only safely create fresh Iso's for MUTABLE types.
 -- Maybe we need a class here.
 
 plink :: Int -> MVector s Int -> ST s ()
-plink i v = VM.write v i  99
+plink i v = MV.write v i  99
 
 test = do v1 <- toIsoCompact' $ V.fromList [1..10::Int]
           let 
@@ -145,15 +162,12 @@ test = do v1 <- toIsoCompact' $ V.fromList [1..10::Int]
 t :: Iso Int
 t = unsafePerformIO $ toIsoCompact' (99::Int)
 
--- Example client code (Safe) 
---------------------------------------------------------------------------------
-{-
-add1 :: Iso Int -> Iso Int
-add1 i = runST $ toIso $ do
-   i'  <- fromIso i
-   i'' <- readRef i'
---   writeRef i' 3  -- Can't do both...
-   let new = i'' + 1
-   -- Now we need
-   return (MkRef undefined)
--}
+-- This will deterministically raise an exception:
+exn = destroyIso t >> destroyIso t
+
+-- This would seem to violate isolation, BUT, it isn't really so until
+-- we call destroyIso in IO.
+x = fmap (+1) t
+y = fmap (+10) t
+
+z = createIsoVec (MV.replicate 3 'h')

@@ -1,8 +1,9 @@
 {-# LANGUAGE DataKinds, ScopedTypeVariables, KindSignatures, RankNTypes, GADTs #-}
 
--- | 
+-- | This initial version was based on the assumption that an Iso
+-- implied "mutable ref".  It was misguided.
 
-module IsoRef where
+module IsoRef01 where
 
 import Data.STRef
 import Data.IORef
@@ -78,3 +79,4 @@ add1 i = runST $ toIso $ do
    return (MkRef undefined)
 -}
 
+b
