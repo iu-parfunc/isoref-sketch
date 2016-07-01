@@ -83,6 +83,27 @@ unsafeUnpair = undefined
 
 -- Should AliasFreeIso be a different type?
 
+-- | A data type without internal sharing.  I.e. no
+-- potentially-mutable location should be reachable by two different
+-- paths through the heap structure
+newtype AF a = AliasFree a
+
+-- | Some types are always aliasfree:
+class AlwaysAliasFree a where
+ -- only trusted users can instance this... TODO: lock it down
+ af :: a -> AF a
+ af = AliasFree 
+
+instance AlwaysAliasFree Int
+instance AlwaysAliasFree Char
+instance AlwaysAliasFree a => AlwaysAliasFree (MVector s a)
+instance AlwaysAliasFree a => AlwaysAliasFree (Vector a)
+
+-- | Safe unpairing of isolated, alias-free state.
+unpair :: Iso s (AF (a,b))
+       -> ST s (Iso s (AF a), Iso s (AF b))
+unpair = undefined
+
 
 -- Referencesa
 --------------------------------------------------------------------------------
@@ -123,12 +144,24 @@ createIsoVec s =
 splitVec :: Iso s (Vector a) -> ST s (Iso s (Vector a), Iso s (Vector a))
 splitVec = undefined
 
+-- FIXME: This is unsafe.  It will only work for unboxed vectors.
+-- For boxed vectors there could be sharing.
+--
+-- How this falls out depends on the details of how we handle nested
+-- mutable data within `a`.
 splitMVec :: forall s a . Iso s (MVector s a)
           -> ST s (Iso s (MVector s a), Iso s (MVector s a))
 splitMVec iso = unsafeUnpair it
   where 
   it :: Iso s (MVector s a, MVector s a)
   it = fmap (MV.splitAt 5 ) iso -- FIXME: use half of length.
+
+-- Here's a version that uses explicit alias-freedom tracking.
+splitMVec' :: forall s a . Iso s (AF (MVector s a))
+          -> ST s (Iso s (AF (MVector s a)), Iso s (AF (MVector s a)))
+splitMVec' iso = undefined
+
+
 
 -- Parallelism
 --------------------------------------------------------------------------------
