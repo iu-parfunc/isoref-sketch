@@ -72,8 +72,19 @@ toIsoCompact' a = unsafeIOToST $
       mv <- newMVar a
       return $ MkIso mv
 
+-- Pairs
+--------------------------------------------------------------------------------
 
--- References
+
+-- This is safe only if we already know that a/b are alias free.
+-- 
+unsafeUnpair :: Iso s (a,b) -> ST s (Iso s a, Iso s b)
+unsafeUnpair = undefined
+
+-- Should AliasFreeIso be a different type?
+
+
+-- Referencesa
 --------------------------------------------------------------------------------
 
 unsafeCastSTRef :: STRef s a -> STRef t a 
@@ -108,6 +119,16 @@ createIsoVec s =
        mv <- unsafeIOToST (newMVar v)
        return (MkIso mv)
 
+-- Alias free parallel vectors!
+splitVec :: Iso s (Vector a) -> ST s (Iso s (Vector a), Iso s (Vector a))
+splitVec = undefined
+
+splitMVec :: forall s a . Iso s (MVector s a)
+          -> ST s (Iso s (MVector s a), Iso s (MVector s a))
+splitMVec iso = unsafeUnpair it
+  where 
+  it :: Iso s (MVector s a, MVector s a)
+  it = fmap (MV.splitAt 5 ) iso -- FIXME: use half of length.
 
 -- Parallelism
 --------------------------------------------------------------------------------
@@ -127,7 +148,13 @@ runPar = undefined
 
 -- | Perform ST computation on a (dynamically) isolated value.  Only a
 -- single thread may consume such a value.
-withIso :: Iso t a -> (forall s . Iso s a -> ST s b) -> Par t b
+--
+-- This version doesn't work very well.
+withIso0 :: Iso t a -> (forall s . Iso s a -> ST s b) -> Par t b
+withIso0 = undefined
+
+-- | Higher kinded version.
+withIso :: Iso t (a t) -> (forall s . Iso s (a s) -> ST s (b s)) -> Par t (b t)
 withIso = undefined
 
 -- Tests
@@ -156,15 +183,37 @@ t = runST $ do
   -- return (x',y')
   return x'
 
+
+----------------------------------------
+-- Higher kinded tests (painful):
 ----------------------------------------
 
-p = runPar $ do let r1 = newIsoRef (3::Int)
-                    go = withIso r1 $ \ r2 -> do
-                           r3 <- destroyIso r2
--- Need a type function to perhaps deeply change the contents of r1.
---                           n <- readSTRef r3
---                           writeSTRef r3 (n+1)
---                           return (n+1)
-                           return 99
-                fork go
-                go
+newtype MyRef a s = MyRef (STRef s a)
+newtype MyInt s = MyInt Int
+
+newtype MyVec a s = MyVec (MVector s a)
+data VecPair a s = VecPair (MVector s a) (MVector s a)
+
+-- Ugly version
+splitVecPair :: Iso s (MyVec a s) -> ST s (Iso s (VecPair a s))
+splitVecPair iso = undefined
+ where
+  _ = withIso iso $ \ iso' -> do
+        MyVec mv <- destroyIso iso'
+        let (v1,v2) = MV.splitAt 5 mv
+            x = VecPair v1 v2
+        -- TODO: Need a way to flip the args on Iso itself...
+        return undefined
+
+
+p :: Int
+p = runPar $
+           do let r1 = fmap MyRef (newIsoRef (3::Int))
+                  go = withIso r1 $ \ r2 -> do
+                         MyRef r3 <- destroyIso r2
+                         n <- readSTRef r3
+                         writeSTRef r3 (n+1)
+                         return (MyInt (n+1))
+              fork go
+              MyInt n <- go
+              return n
