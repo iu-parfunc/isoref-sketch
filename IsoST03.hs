@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds, ScopedTypeVariables, KindSignatures, RankNTypes #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- | This version attaches a session/region parameter to Iso's, and
 -- let's them be used in ST.
@@ -83,6 +84,8 @@ createIsoRef s = unsafePerformIO $ do -- Could use dupable?
    ref <- unsafeSTToIO s   
    unsafeFreshIso $ unsafeCastSTRef ref
 
+newIsoRef :: a -> (Iso t (STRef t a))
+newIsoRef a = createIsoRef (newSTRef a)
 
 -- Vectors
 --------------------------------------------------------------------------------
@@ -104,6 +107,28 @@ createIsoVec s =
     do let v = V.create s 
        mv <- unsafeIOToST (newMVar v)
        return (MkIso mv)
+
+
+-- Parallelism
+--------------------------------------------------------------------------------
+
+-- A fake parallelism monad.
+newtype Par s a = Par (IO a)
+ deriving (Functor, Applicative, Monad)
+
+fork :: Par s a -> Par s a
+fork = undefined
+
+runPar :: (forall s . Par s a) -> a 
+runPar = undefined
+
+-- We cannot directly "lift" ST into Par... that would introduce races.
+-- But we can do this:
+
+-- | Perform ST computation on a (dynamically) isolated value.  Only a
+-- single thread may consume such a value.
+withIso :: Iso t a -> (forall s . Iso s a -> ST s b) -> Par t b
+withIso = undefined
 
 -- Tests
 --------------------------------------------------------------------------------
@@ -131,4 +156,15 @@ t = runST $ do
   -- return (x',y')
   return x'
 
+----------------------------------------
 
+p = runPar $ do let r1 = newIsoRef (3::Int)
+                    go = withIso r1 $ \ r2 -> do
+                           r3 <- destroyIso r2
+-- Need a type function to perhaps deeply change the contents of r1.
+--                           n <- readSTRef r3
+--                           writeSTRef r3 (n+1)
+--                           return (n+1)
+                           return 99
+                fork go
+                go
