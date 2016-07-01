@@ -6,12 +6,14 @@
 -- It is a modification of version 02.
 
 module IsoST03
-      (toIsoCompact', modifyIsoVec, destroyIso) -- createIsoVec
+      (toIsoCompact', modifyIsoVec, destroyIso, createIsoVec,
+       createIsoRef)
    where
 
 import Control.DeepSeq
 import Control.Exception
-import Data.STRef
+-- import Data.STRef
+import GHC.STRef -- expose constructor
 import Data.IORef
 import GHC.ST
 import Control.Concurrent.MVar
@@ -23,6 +25,7 @@ import qualified Data.Vector.Mutable as MV
 
 import Control.Monad.ST.Unsafe
 import System.IO.Unsafe (unsafePerformIO)
+import Unsafe.Coerce (unsafeCoerce)
 
 --------------------------------------------------------------------------------
 
@@ -49,16 +52,6 @@ unsafeFreshIso x = -- unsafePerformIO $
       mv <- newMVar x
       return $ MkIso mv
 
--- | It's safe to mutate a pure vector if we're the only ones to see
--- it happen.
-modifyIsoVec :: Iso t (Vector a) -> (forall s . MVector s a -> ST s ()) -> Iso t (Vector a)
-modifyIsoVec iso fn = unsafePerformIO $ do
-  vec  <- unsafeSTToIO $ destroyIso iso
-  vec' <- unsafeThaw vec
-  unsafeSTToIO (fn vec')
-  mv2 <- newMVar vec
-  return $! MkIso mv2
-
 -- unsafeWithMVar :: MVar a -> (a -> b) -> b
 -- unsafeWithMVar mv fn = unsafePerformIO $ do
   -- x  <- takeMVar mv
@@ -79,6 +72,31 @@ toIsoCompact' a = unsafeIOToST $
       return $ MkIso mv
 
 
+-- References
+--------------------------------------------------------------------------------
+
+unsafeCastSTRef :: STRef s a -> STRef t a 
+unsafeCastSTRef s = unsafeCoerce s
+
+createIsoRef :: (forall s. ST s (STRef s a)) -> Iso t (STRef t a)
+createIsoRef s = unsafePerformIO $ do -- Could use dupable?
+   ref <- unsafeSTToIO s   
+   unsafeFreshIso $ unsafeCastSTRef ref
+
+
+-- Vectors
+--------------------------------------------------------------------------------
+
+-- | It's safe to mutate a pure vector if we're the only ones to see
+-- it happen.
+modifyIsoVec :: Iso t (Vector a) -> (forall s . MVector s a -> ST s ()) -> Iso t (Vector a)
+modifyIsoVec iso fn = unsafePerformIO $ do
+  vec  <- unsafeSTToIO $ destroyIso iso
+  vec' <- unsafeThaw vec
+  unsafeSTToIO (fn vec')
+  mv2 <- newMVar vec
+  return $! MkIso mv2
+
 -- | Identitical to Data.Vector.create with a different return type.
 createIsoVec :: (forall s. ST s (MVector s a)) -> Iso t (Vector a)
 createIsoVec s =
@@ -86,6 +104,9 @@ createIsoVec s =
     do let v = V.create s 
        mv <- unsafeIOToST (newMVar v)
        return (MkIso mv)
+
+-- Tests
+--------------------------------------------------------------------------------
 
 plink :: Int -> MVector s Int -> ST s ()
 plink i v = MV.write v i  99
