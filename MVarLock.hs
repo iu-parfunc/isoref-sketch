@@ -49,3 +49,12 @@ mkMyRec =
                                return (True, r))
      return $ MyRec mv r
 
+
+
+modRec :: MyRec -> IO ()
+modRec (MyRec mv r) =
+  withMVarLock mv $ \ b -> do
+    n <- readSTRef r
+    writeSTRef r $! (n+1)
+    return (not b, ())
+
