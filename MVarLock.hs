@@ -12,7 +12,7 @@ import Control.Concurrent.MVar
 -- import GHC.Conc
 
 import Control.Monad.ST
-import Control.Monad.ST.Unsafe (unsafeSTToIO)
+import Control.Monad.ST.Unsafe (unsafeSTToIO, unsafeIOToST)
 import Data.STRef
 
 --------------------------------------------------------------------------------
@@ -36,6 +36,22 @@ newMVarLock :: a -> (forall s . MVarLock s a -> ST s b) -> IO b
 newMVarLock init fn =
   do mv <- newMVar init
      stToIO (fn (MVarLock mv))
+
+-- | A variant of `newMVarLock` where the MVarLock starts empty, and
+-- is initially filled with the `a` result of the user's computation.
+newEmptyMVarLock :: (forall s . MVarLock s a -> ST s (a,b)) -> IO b
+newEmptyMVarLock fn =
+  do mv <- newEmptyMVar
+     (a,b) <- stToIO (fn (MVarLock mv))
+     putMVar mv a
+     return b
+
+-- | This variant takes an explicit setter function to write the MVar.
+--   It helps in avoiding rigid/skolem variable errors.
+newEmptyMVarLock' :: (forall s . MVarLock s a -> (a -> ST s ()) -> ST s b) -> IO b
+newEmptyMVarLock' fn =
+  do mv <- newEmptyMVar
+     stToIO (fn (MVarLock mv) (unsafeIOToST . putMVar mv))
 
 -- | Use the lock to operate on the contained state, and update the
 -- value in the MVar.
@@ -85,6 +101,20 @@ modRec (MyRec mv r) =
     n <- readSTRef r
     writeSTRef r $! (n+1)
     return (not b, (n+1))
+
+-- | In this example, we make the state internal rather than outside the MVar:
+data MyRec2 = forall s . MyRec2 (MVarLock s (STRef s Int))
+-- FIXME ^ No good way to handle this right now.
+
+-- This can't work with newMVarLock or newEmptyMVarLock:
+{-
+safeTest01 = do
+  mr <- newEmptyMVarLock $ \mv -> do
+         r <- newSTRef 3
+         return (r, MyRec2 mv)
+--  withMVarLock mr
+  undefined
+-}
 
 
 --------------------------------------------------------------------------------
