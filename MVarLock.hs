@@ -58,6 +58,9 @@ newMVarLock' fn =
      return b
 
 ----------------------------------------
+-- Note, several experimental/intermediate versions were here, but
+-- discarded in 4fe4b7441932b94f511f60586e79a2eb081c0cf9
+
 
 -- | This function is useful for constructing MVarLocks with internally MUTABLE state.
 --   Doing this requires a bit of a dance to avoid the 's' variable escaping its scope.
@@ -73,7 +76,7 @@ newMVarLockMutable Proxy fn =
      (a,x) <- stToIO (fn (MVarLock mv))
      putMVar mv a
      return x
-
+            
 --------------------------------------------------------------------------------
 -- Using the locks
 --------------------------------------------------------------------------------
@@ -97,6 +100,11 @@ withMVarLock_ mv fn =
     -- Inefficient implementation:
     withMVarLock mv (\ a -> do x <- fn a; return (a,x))
 
+-- | Are two MVars the same memory location?
+--   This is a form of heterogeneous equality which is handy when
+--   dealing with existential types.
+sameMVarLock :: MVarLock s a -> MVarLock t a -> Bool
+sameMVarLock (MVarLock m1) (MVarLock m2) = m1 == m2
 
 --------------------------------------------------------------------------------
 -- Example datatype and usage:
