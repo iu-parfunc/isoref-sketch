@@ -6,7 +6,14 @@
 
 -- | 
 
-module MVarLock where
+module MVarLock
+    ( MVarLock -- Must stay abstract.
+    , newMVarLock
+    , newEmptyMVarLock
+    , newEmptyMVarLock7
+    , STCastable() -- The user cannot invoke these casts!
+    )
+    where
 
 import Control.Concurrent.MVar
 -- import GHC.Conc
@@ -14,7 +21,8 @@ import Control.Concurrent.MVar
 import Control.Monad.ST
 import Control.Monad.ST.Unsafe (unsafeSTToIO, unsafeIOToST)
 import Data.STRef
-
+import Data.Proxy
+    
 --------------------------------------------------------------------------------
 
 -- | A lock which, when held, grants the authority to modify other
@@ -27,7 +35,8 @@ unsafeNewMVarLock :: ST s (a,b) -> IO (MVarLock s a, b)
 unsafeNewMVarLock = undefined
 
 -- | Create a new MVarLock and construct a state that contains it,
---  while existentially quantifying its region parameter.
+--  while existentially quantifying its region parameter.  To use this
+--  function, the value inside the MVar must NOT be ST-mutable.
 --
 --  This is safe for the usual reason.  `s` can't escape except in
 --  existial bindings where it can do no harm.  No second MVarLock can
@@ -39,6 +48,8 @@ newMVarLock init fn =
 
 -- | A variant of `newMVarLock` where the MVarLock starts empty, and
 -- is initially filled with the `a` result of the user's computation.
+--
+-- Again, this version works when the state `a` is NOT ST-mutable.
 newEmptyMVarLock :: (forall s . MVarLock s a -> ST s (a,b)) -> IO b
 newEmptyMVarLock fn =
   do mv <- newEmptyMVar
@@ -46,12 +57,131 @@ newEmptyMVarLock fn =
      putMVar mv a
      return b
 
--- | This variant takes an explicit setter function to write the MVar.
---   It helps in avoiding rigid/skolem variable errors.
-newEmptyMVarLock' :: (forall s . MVarLock s a -> (a -> ST s ()) -> ST s b) -> IO b
-newEmptyMVarLock' fn =
+----------------------------------------
+            
+-- This variant takes an explicit setter function to write the MVar.
+-- It has problems though...
+newEmptyMVarLock2 :: (forall s . MVarLock s a -> (a -> ST s ()) -> ST s b) -> IO b
+newEmptyMVarLock2 fn =
   do mv <- newEmptyMVar
      stToIO (fn (MVarLock mv) (unsafeIOToST . putMVar mv))
+
+----------------------------------------
+
+newEmptyMVarLock3 :: STCastable a => (forall s . MVarLock s a -> (CastState () a -> ST s ()) -> ST s b) -> IO b
+newEmptyMVarLock3 = undefined
+{- 
+Again, Casting on the input to the fill function will result in in error like this:
+
+    VarLock.hs:126:15: Couldn't match expected type ‘CastState () a1’ …
+                    with actual type ‘STRef s a0’
+        The type variables ‘a0’, ‘a1’ are ambiguous
+    MVarLock.hs:127:25: Couldn't match type ‘a1’ with ‘STRef s Int’ …
+          because type variable ‘s’ would escape its scope
+in:
+    safeTest02 = do
+      mr <- newEmptyMVarLock3 $ \mv fill -> do
+             r <- newSTRef 3
+             fill r 
+             return (MyRec2 mv)
+      undefined
+
+We can't unify a1... even though if we did, CastState would reduce to eliminate the offending 's'.
+-}
+
+----------------------------------------
+
+newEmptyMVarLock4 :: STCastable a => (forall s . MVarLock s a -> (forall t . CastState t a -> ST t ()) -> ST s b) -> IO b
+newEmptyMVarLock4 = undefined
+
+safeTest04 :: IO ()
+safeTest04 = do
+  let fn :: forall s . MVarLock s (STRef s Int) -> (forall t . CastState t (STRef s Int) -> ST t ()) -> ST s MyRec2
+      fn mv fill = do r <- newSTRef (3::Int)
+           --         fill r 
+                      return (MyRec2 mv)
+  -- Still won't work; the type error comes HERE:  
+  -- mr <- newEmptyMVarLock4 fn
+  -- That is, as soon as we try to unify the larger-scoped `a` with
+  -- `STRef s`, we're in trouble.
+  return ()
+
+----------------------------------------
+         
+-- Ok, here let's try to not mention s in any type scoped outside s's binding.
+-- Rather, let's cast to 's' on demand:
+newEmptyMVarLock5 :: STCastable a
+                  => Proxy a 
+                  -> (forall s . MVarLock s (CastState s a) -> (CastState s a -> ST s ()) -> ST s b)
+                  -> IO b
+newEmptyMVarLock5 Proxy fn =
+  do mv <- newEmptyMVar
+     stToIO (fn (MVarLock mv) (unsafeIOToST . putMVar mv))
+
+                    
+-- | This one works.  But it's far from ergonomic.
+safeTest05 :: IO Int
+safeTest05 = do
+  let fn :: forall s . MVarLock s (CastState s (STRef () Int))
+         -> (CastState s (STRef () Int) -> ST s ()) -> ST s MyRec2
+      fn mv fill = do r <- newSTRef (3::Int)
+                      fill r 
+                      return (MyRec2 mv)
+  MyRec2 mr <- newEmptyMVarLock5 (Proxy::Proxy (STRef () Int)) fn
+  withMVarLock_ mr readSTRef  
+  
+-- | Ok, well it doesn't need to be quite *that* verbose.
+--   But we do need the proxy to avoid ambiguity.
+safeTest05' :: IO Int
+safeTest05' = do
+  MyRec2 mr <- newEmptyMVarLock5 (Proxy::Proxy (STRef () Int)) $ \ mv fill -> do 
+                 r <- newSTRef (3::Int)
+                 fill r 
+                 return (MyRec2 mv)
+  withMVarLock_ mr readSTRef  
+
+                
+----------------------------------------
+
+-- Can we avoid the proxy by fixing the type we cast from?
+-- Maybe if we use injectivity annotations...
+-- newEmptyMVarLock6 :: STCastable2 a
+--                   => (forall s . MVarLock s (CastState2 () s a) -> (CastState2 () s a -> ST s ()) -> ST s b)
+--                   -> IO b
+
+
+-- Last, let's try to go back to returning the value 
+-- rather than calling a fill function.
+----------------------------------------
+
+-- | This function is useful for constructing MVarLocks with internally MUTABLE state.
+--   Doing this requires a bit of a dance to avoid the 's' variable escaping its scope.
+-- 
+--   Namely, it `s` cannot be inside a type unified with `a`, even if
+--   a type family will subsequently discard it.
+newEmptyMVarLock7 :: STCastable a
+                  => Proxy a 
+                  -> (forall s . MVarLock s (CastState s a) -> ST s (CastState s a, b))
+                  -> IO b
+newEmptyMVarLock7 Proxy fn =
+  do mv <- newEmptyMVar
+     (a,x) <- stToIO (fn (MVarLock mv))
+     putMVar mv a
+     return x
+
+-- | This is both more ergonomic, and safer, because the user cannot
+-- forget to fill the MVar.
+safeTest07 :: IO Int
+safeTest07 = do
+  MyRec2 mr <- newEmptyMVarLock7 (Proxy::Proxy (STRef () Int)) $ \mv -> do
+                 r <- newSTRef (3::Int)
+                 return (r, MyRec2 mv)
+  withMVarLock_ mr readSTRef  
+
+
+--------------------------------------------------------------------------------
+-- Using the locks
+--------------------------------------------------------------------------------
 
 -- | Use the lock to operate on the contained state, and update the
 -- value in the MVar.
@@ -68,7 +198,9 @@ readMVarLock (MVarLock m) = readMVar m
 -- | A version which does not update the MVar state and may save
 -- allocating a result tuple, which may happen anyway with CPR/demand analysis.
 withMVarLock_ :: MVarLock s a -> (a -> ST s b) -> IO b
-withMVarLock_ = undefined
+withMVarLock_ mv fn =
+    -- Inefficient implementation:
+    withMVarLock mv (\ a -> do x <- fn a; return (a,x))
 
 
 --------------------------------------------------------------------------------
@@ -104,7 +236,7 @@ modRec (MyRec mv r) =
 
 -- | In this example, we make the state internal rather than outside the MVar:
 data MyRec2 = forall s . MyRec2 (MVarLock s (STRef s Int))
--- FIXME ^ No good way to handle this right now.
+-- FIXME ^ No good way to build this right now.
 
 -- This can't work with newMVarLock or newEmptyMVarLock:
 {-
@@ -117,13 +249,14 @@ safeTest01 = do
 -}
 
 
+
+
 --------------------------------------------------------------------------------
 -- SCRAP: Experimenting
 --------------------------------------------------------------------------------
 
 -- This explores the idea of using a higher rank type and then
--- "teleport" the 'a' result out of it.  Don't let the b result have
--- any mutable bits.
+-- "teleport" the a result out of it by using a Cast.
 
 -- But this was just an experiment.  We don't actually want the
 -- MVarLock to have some `t` type that could unify with the type of
@@ -134,7 +267,7 @@ safeTest01 = do
 newMVarLock' :: (STCastable a, STCastable b) =>
 -- Option 1: attempt to cast outputs (skolem var errors)
 --                (forall s . ST s (a,b)) -> IO (MVarLock t a, (CastState t b))
--- Option 2: attempt to cast inputs:
+-- Option 2: attempt to cast intermediate result:
                (forall s . ST s (a, CastState s b)) -> IO (MVarLock t a, b)
 newMVarLock' = undefined
 
@@ -155,7 +288,7 @@ class STCastable (a :: *) where
   -- May be helpful for avoiding ambiguity.
   type CastState s a :: * -- = res | res -> s
 
---  cast :: a -> CastState t a
+  -- unsafeCastState :: a -> CastState t a
 
 instance STCastable a => STCastable (STRef s a) where
   type GetState (STRef s a)    = s
@@ -169,6 +302,27 @@ instance STCastable Int where
 instance STCastable Bool where
   type GetState Bool    = ()
   type CastState t Bool = Bool
+
+--------------------------------------------------------------------------------
+
+-- | In some cases it may help avoid ambiguity if we can name both the
+-- source and target types as inputs.
+class STCastable2 (a :: *) where
+  type GetState2 a :: *
+  type CastState2 s t a :: * 
+
+instance STCastable2 a => STCastable2 (STRef s a) where
+  type GetState2 (STRef s a)    = s
+  type CastState2 s t (STRef s a) = STRef t (CastState2 s t a)
+
+-- Should be derivable:
+instance STCastable2 Int where
+  type GetState2 Int    = ()
+  type CastState2 s t Int = Int
+
+instance STCastable2 Bool where
+  type GetState2 Bool    = ()
+  type CastState2 s t Bool = Bool
 
 
 --------------------------------------------------------------------------------
