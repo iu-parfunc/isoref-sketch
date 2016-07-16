@@ -1,3 +1,4 @@
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DataKinds, ScopedTypeVariables, KindSignatures, RankNTypes #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
@@ -36,6 +37,13 @@ import Unsafe.Coerce (unsafeCoerce)
 -- locations.
 newtype Iso s a = MkIso (MVar a)
 
+newtype Compact a = Compact { getCompact :: a } -- Placeholder
+
+newtype IsoCompact s a = IsoCompact (Iso s (Compact a))
+
+appendCompact :: NFData a => a -> IO (Compact a)
+appendCompact = undefined
+
 -- | Speculate that we are the first/only reader and destructively
 -- empty the Iso.
 destroyIso :: Iso s a -> ST s a
@@ -58,13 +66,44 @@ unsafeFreshIso x = -- unsafePerformIO $
   -- x  <- takeMVar mv
   -- return $! fn x
 
--- Is this safe?  
+-- Is this safe?  NO!  See counterexample below.
 instance Functor (Iso s) where
   fmap fn i = unsafePerformIO $ do
     a <- unsafeSTToIO $ destroyIso i
     unsafeFreshIso $ fn a
+    -- This only works for the class of functions that return "all
+    -- fresh" results.  Results from which all reachable heap
+    -- locations were allocated since the start of the function's
+    -- execution.  We can only guarantee this for Compact outputs.
 
--- | This one would just "getCompact" before returning.  You'd
+-- This won't work because we can't get the NFData b context:
+{- 
+instance Functor (IsoCompact s) where
+-}
+
+-- This is what we can do.  This isn't that useful, except that it
+-- avoids the ST monad unlike toIsoCompact.  Why is that safe?  It is
+-- only safe if we don't expose the identity of the Compact blocks
+-- themselves, right?
+
+-- This doesn't feel right, actually.  I think compactContains and
+-- compactContainsAny, must instead move to the IO monad.
+mapIsoCompact :: (NFData b) => (a -> b) -> IsoCompact s a -> IsoCompact s b
+mapIsoCompact  fn (IsoCompact i) =  unsafePerformIO $ do
+    a <- unsafeSTToIO $ destroyIso i
+    let b = fn (getCompact a)
+    b' <- toIsoCompact b
+    return (IsoCompact b')
+
+-- Compact a value and return an isolated pointer to it:
+-- 
+-- This is in the ST monad to prevent duplication, and because we
+-- expose equality checks (physical identity) on Compact regions.
+-- 
+toIsoCompact :: (NFData a) => a -> IO (Iso s (Compact a))
+toIsoCompact = undefined
+
+-- | This variant one would just "getCompact" before returning.  You'd
 -- think that it would be definable in terms of toIsoCompact?
 toIsoCompact' :: (NFData a) => a -> ST s (Iso s a)
 toIsoCompact' a = unsafeIOToST $ 
@@ -216,10 +255,21 @@ t = runST $ do
   -- return (x',y')
   return x'
 
+-- | COUNTEREXAMPLE:  Functor instance is not safe.
+t2 = runST $ do
+  tmp <- toIsoCompact' (99::Int)
+  -- A non-isolated value that we reference elsewhere:
+  let noniso = 2 + 2
+  x <- destroyIso $ fmap (\_ -> noniso) tmp
+  return (noniso,x) -- Second use!!
+
 
 ----------------------------------------
 -- Higher kinded tests (painful):
 ----------------------------------------
+
+-- Alternative would be STCastable type class.  But how to make it
+-- safe?
 
 newtype MyRef a s = MyRef (STRef s a)
 newtype MyInt s = MyInt Int
