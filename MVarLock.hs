@@ -11,6 +11,8 @@ module MVarLock
     , newMVarLock
     , newMVarLock' 
     , newMVarLockMutable
+    , withMVarLock
+    , withMVarLock_
     , STCastable() -- The user cannot invoke these casts!
     )
     where

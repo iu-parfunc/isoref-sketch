@@ -24,7 +24,7 @@ library
                        vector, primitive, deepseq
   -- hs-source-dirs:      
   default-language:    Haskell2010
-
+  ghc-options: -rtsopts -Wall -O2
 
   
 test-suite test-isoref-sketch
@@ -40,3 +40,15 @@ test-suite test-isoref-sketch
   -- -eventlog -with-rtsopts=-l-au
 
 
+benchmark bench-isoref-sketch
+  main-is:             Main.hs
+  hs-source-dirs:      bench/
+  default-language: Haskell2010
+  type: exitcode-stdio-1.0
+  default-language:    Haskell2010
+  build-depends:       base >=4.8, criterion,
+                       isoref-sketch
+
+  ghc-options: -rtsopts -Wall -O2
+  -- -eventlog -with-rtsopts=-l-au
+  
