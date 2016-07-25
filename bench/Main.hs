@@ -56,21 +56,6 @@ strefCounter iters = stToIO $
 
 data Example = forall s . Example (TLState s) (STRef s Int64)
 
--- | Amortize all accesses with a single check.  This is the best case.
-tlsCounterAmortized :: Int64 -> IO ()
-tlsCounterAmortized iters =
-  do e <- newThreadLocalState $ \tls -> do
-           r <- newSTRef 3
-           return $ Example tls r
-     _ <- case e of
-           Example t r -> withThreadLocalState t $
-             let loop cnt
-                  | cnt == iters = readSTRef r
-                  | otherwise = do writeSTRef r cnt 
-                                   loop (cnt+1)
-             in loop 0
-     return ()
-
 -- | Models many small, fine grained accesses to the thread-locked state.
 --   This is the worst case.
 tlsCounter :: Int64 -> IO ()
@@ -98,13 +83,32 @@ tlsCounterOpt iters =
            return $ Example tls r
      case e of
       Example tls r -> do
+       -- The compiler SHOULD be be able to lift the TID check out of the loop
+       -- here and optimize this into tlsCounterAmortized.  It does not.
+       -- In fact, this "Opt" version doesn't go any faster at all.
        let loop cnt
              | cnt == iters = withThreadLocalState tls $ readSTRef r
              | otherwise = do withThreadLocalState tls $ writeSTRef r cnt 
                               loop (cnt+1)
        _ <- loop 0
        return ()
-            
+
+-- | Amortize all accesses with a single check.  This is the best case.
+tlsCounterAmortized :: Int64 -> IO ()
+tlsCounterAmortized iters =
+  do e <- newThreadLocalState $ \tls -> do
+           r <- newSTRef 3
+           return $ Example tls r
+     _ <- case e of
+           Example t r -> withThreadLocalState t $
+             let loop cnt
+                  | cnt == iters = readSTRef r
+                  | otherwise = do writeSTRef r cnt 
+                                   loop (cnt+1)
+             in loop 0
+     return ()
+
+              
 -- | An STRef protected by a lock.
 data Example2 = forall s . Example2 (MVarLock s ()) (STRef s Int64)
 
