@@ -22,7 +22,7 @@ pureCounter iters =
     do let loop cnt
             | cnt == iters = cnt
             | otherwise = loop (cnt+1)
-       evaluate (loop 0)
+       _ <- evaluate (loop 0)
        return ()
     
 pureCounterIO :: Int64 -> IO ()
@@ -89,6 +89,22 @@ tlsCounter iters =
      _ <- loop 0
      return ()
 
+-- | In this version, only do the pattern match once and keep the
+-- lock's key in scope
+tlsCounterOpt :: Int64 -> IO ()
+tlsCounterOpt iters =
+  do e <- newThreadLocalState $ \tls -> do
+           r <- newSTRef 3
+           return $ Example tls r
+     case e of
+      Example tls r -> do
+       let loop cnt
+             | cnt == iters = withThreadLocalState tls $ readSTRef r
+             | otherwise = do withThreadLocalState tls $ writeSTRef r cnt 
+                              loop (cnt+1)
+       _ <- loop 0
+       return ()
+            
 -- | An STRef protected by a lock.
 data Example2 = forall s . Example2 (MVarLock s ()) (STRef s Int64)
 
@@ -118,6 +134,7 @@ main = defaultMain
        , bench "PureCounterIO"   $ Benchmarkable pureCounterIO
        , bench "mvarLockCounter" $ Benchmarkable mvarLockCounter
        , bench "tlsCounter"      $ Benchmarkable tlsCounter
+       , bench "tlsCounterOpt"   $ Benchmarkable tlsCounterOpt
        , bench "tlsCounterAmortized" $ Benchmarkable tlsCounterAmortized
        , bench "IORef" $ Benchmarkable iorefCounter
        , bench "STRef" $ Benchmarkable strefCounter
