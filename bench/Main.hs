@@ -25,7 +25,7 @@ three = 3
 -- Replace all occurences of "three" with to write increasing,
 -- re-allocated, re-boxed Ints.
 
-#ifdef
+#ifdef CONSTANT
 #warning "Using a CONSTANT argument to writeIORef"
 #define _WHATTOWRITE three
 #else

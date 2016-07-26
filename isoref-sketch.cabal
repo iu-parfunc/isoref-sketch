@@ -24,8 +24,8 @@ library
                        vector, primitive, deepseq
   -- hs-source-dirs:      
   default-language:    Haskell2010
-  ghc-options: -rtsopts -Wall -O2
-
+  ghc-options: -rtsopts -O2
+--  ghc-options: -Wall
   
 test-suite test-isoref-sketch
   main-is:             Main.hs
@@ -36,7 +36,8 @@ test-suite test-isoref-sketch
   build-depends:       base >=4.8, async, tasty, tasty-hunit,
                        isoref-sketch
 
-  ghc-options: -rtsopts -Wall -O2
+  ghc-options: -rtsopts -O2
+--  ghc-options: -Wall
   -- -eventlog -with-rtsopts=-l-au
 
 
@@ -50,6 +51,7 @@ benchmark bench-isoref-sketch
                        atomic-primops,
                        isoref-sketch
 
-  ghc-options: -rtsopts -Wall -O2
+  ghc-options: -rtsopts -O2
+--  ghc-options: -Wall
   -- -eventlog -with-rtsopts=-l-au
   
