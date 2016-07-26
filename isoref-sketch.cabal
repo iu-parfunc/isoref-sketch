@@ -47,6 +47,7 @@ benchmark bench-isoref-sketch
   type: exitcode-stdio-1.0
   default-language:    Haskell2010
   build-depends:       base >=4.8, criterion,
+                       atomic-primops,
                        isoref-sketch
 
   ghc-options: -rtsopts -Wall -O2

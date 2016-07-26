@@ -4,6 +4,7 @@
 
 module Main where
 
+import qualified Data.Atomics.Counter as C
 import Control.Concurrent
 import Control.Exception
 import Criterion.Main
@@ -42,6 +43,29 @@ iorefCounter iters =
                              loop (cnt+1)
        _ <- loop 0
        return ()
+
+atomicIORefCounter :: Int64 -> IO ()
+atomicIORefCounter iters =
+    do r <- newIORef 0
+       let loop cnt
+            | cnt == iters = readIORef r
+            | otherwise = do atomicWriteIORef r cnt 
+                             loop (cnt+1)
+       _ <- loop 0
+       return ()
+
+-- | This is not really a fair comparison because it's really doing a
+-- read and a write (RMW).
+atomicCounter :: Int64 -> IO ()
+atomicCounter iters =
+    do r <- C.newCounter 0
+       let loop cnt
+            | cnt == iters = C.readCounter r
+            | otherwise = do C.incrCounter_ 1 r 
+                             loop (cnt+1)
+       _ <- loop 0
+       return ()
+              
               
 -- | UNSAFE direct use of ST.  
 strefCounter :: Int64 -> IO ()
@@ -141,5 +165,7 @@ main = defaultMain
        , bench "tlsCounterOpt"   $ Benchmarkable tlsCounterOpt
        , bench "tlsCounterAmortized" $ Benchmarkable tlsCounterAmortized
        , bench "IORef" $ Benchmarkable iorefCounter
+       , bench "AtomicIORef" $ Benchmarkable atomicIORefCounter
+       , bench "AtomicCounter" $ Benchmarkable atomicCounter
        , bench "STRef" $ Benchmarkable strefCounter
        ]
