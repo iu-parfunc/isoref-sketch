@@ -1,4 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE CPP #-}
 
 -- | 
 
@@ -10,6 +11,7 @@ import Control.Exception
 import Criterion.Main
 import Criterion.Types
 import Data.IORef
+import qualified GHC.IORef as GIO
 import Data.STRef
 import MVarLock
 import ThreadLocalLock
@@ -17,7 +19,16 @@ import Control.Monad.ST
 
 import Data.Int
 
+three :: Int64
+three = 3
 
+-- Replace all occurences of "three" with to write increasing,
+-- re-allocated, re-boxed Ints.
+
+#define _WHATTOWRITE three
+-- #define _WHATTOWRITE cnt
+
+        
 pureCounter :: Int64 -> IO ()
 pureCounter iters =
     do let loop cnt
@@ -33,23 +44,33 @@ pureCounterIO iters =
             | otherwise = loop (cnt+1)
        _ <- loop 0
        return ()
-    
+              
 iorefCounter :: Int64 -> IO ()
 iorefCounter iters =
     do r <- newIORef 0
        let loop cnt
             | cnt == iters = readIORef r
-            | otherwise = do writeIORef r cnt 
+            | otherwise = do writeIORef r _WHATTOWRITE
                              loop (cnt+1)
        _ <- loop 0
        return ()
 
+unsafeIorefCounter :: Int64 -> IO ()
+unsafeIorefCounter iters =
+    do r <- GIO.newIORef 0
+       let loop cnt
+            | cnt == iters = GIO.readIORef r
+            | otherwise = do GIO.writeIORef r _WHATTOWRITE
+                             loop (cnt+1)
+       _ <- loop 0
+       return ()
+              
 atomicIORefCounter :: Int64 -> IO ()
 atomicIORefCounter iters =
     do r <- newIORef 0
        let loop cnt
             | cnt == iters = readIORef r
-            | otherwise = do atomicWriteIORef r cnt 
+            | otherwise = do atomicWriteIORef r _WHATTOWRITE
                              loop (cnt+1)
        _ <- loop 0
        return ()
@@ -73,7 +94,7 @@ strefCounter iters = stToIO $
     do r <- newSTRef 0
        let loop cnt
             | cnt == iters = readSTRef r
-            | otherwise = do writeSTRef r cnt 
+            | otherwise = do writeSTRef r _WHATTOWRITE
                              loop (cnt+1)
        _ <- loop 0
        return ()
@@ -93,7 +114,7 @@ tlsCounter iters =
                 Example t r -> withThreadLocalState t $ readSTRef r
            | otherwise = do
                case e of
-                 Example t r -> withThreadLocalState t $ writeSTRef r cnt 
+                 Example t r -> withThreadLocalState t $ writeSTRef r _WHATTOWRITE
                loop (cnt+1)
      _ <- loop 0
      return ()
@@ -112,7 +133,7 @@ tlsCounterOpt iters =
        -- In fact, this "Opt" version doesn't go any faster at all.
        let loop cnt
              | cnt == iters = withThreadLocalState tls $ readSTRef r
-             | otherwise = do withThreadLocalState tls $ writeSTRef r cnt 
+             | otherwise = do withThreadLocalState tls $ writeSTRef r _WHATTOWRITE
                               loop (cnt+1)
        _ <- loop 0
        return ()
@@ -127,7 +148,7 @@ tlsCounterAmortized iters =
            Example t r -> withThreadLocalState t $
              let loop cnt
                   | cnt == iters = readSTRef r
-                  | otherwise = do writeSTRef r cnt 
+                  | otherwise = do writeSTRef r _WHATTOWRITE
                                    loop (cnt+1)
              in loop 0
      return ()
@@ -164,6 +185,7 @@ main = defaultMain
        , bench "tlsCounter"      $ Benchmarkable tlsCounter
        , bench "tlsCounterOpt"   $ Benchmarkable tlsCounterOpt
        , bench "tlsCounterAmortized" $ Benchmarkable tlsCounterAmortized
+       , bench "UnsafeIORef" $ Benchmarkable unsafeIorefCounter
        , bench "IORef" $ Benchmarkable iorefCounter
        , bench "AtomicIORef" $ Benchmarkable atomicIORefCounter
        , bench "AtomicCounter" $ Benchmarkable atomicCounter
