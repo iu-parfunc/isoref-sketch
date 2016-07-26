@@ -25,9 +25,13 @@ three = 3
 -- Replace all occurences of "three" with to write increasing,
 -- re-allocated, re-boxed Ints.
 
+#ifdef
+#warning "Using a CONSTANT argument to writeIORef"
 #define _WHATTOWRITE three
--- #define _WHATTOWRITE cnt
-
+#else
+#warning "Using a INCREASING (reboxed) argument to writeIORef"
+#define _WHATTOWRITE cnt
+#endif
         
 pureCounter :: Int64 -> IO ()
 pureCounter iters =
