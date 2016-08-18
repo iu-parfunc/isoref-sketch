@@ -60,8 +60,17 @@ d = do pat @ $x <- newRef "ignored"
        print $ runStateP (fst pat) "nil" $
                putP (fst pat) "payload"
 
+-- e = do x <- $freshRef "contents"
+--        v  <- readRef x
+--        return $ "yay: "++v
+
+f = do $(fresh "quux") <- newRef "fval"
+       v  <- readRef quux
+       return $ "yay: "++v
+
 main = do
    print a
    print =<< b
    print cr
    d
+   print =<< f
