@@ -299,13 +299,26 @@ getP :: (Monadish m, TSProj var s t m, MonadMState var s (m t t)) =>
 getP       = get
 putP var s = modifyP var (const s) >>>= \_ -> ret ()
 
+(>>=) :: Monadish m => m s t a -> (a -> m t u b) -> m s u b
+(>>=) = (>>>=)
+
+return :: (P.Monad (m s s), Monadish m) =>
+          a -> m s s a
+return = ret
+
+fail :: P.Monad m => String -> m a
+fail = P.fail
+
+(>>) :: Monadish m => m s t a -> m t u b -> m s u b
+m1 >> m2 = m1 >>= (\_ -> m2)
+
 -- Session-like type!
-tsP1 :: (TSProj Var1 Char t m, TSProj Var1 Bool u m, TSProj Var1 a s m,
-      MonadMPState Var1 Char Bool t u m, MonadMPState Var1 a Char s t m,
-      P.Monad (m u u), P.Monad (m t t)) =>
-     m s u ()
-tsP1 = putP Var1 'c' >>>= \_ ->
-       putP Var1 True
+-- tsP1 :: (TSProj Var1 Char t m, TSProj Var1 Bool u m, TSProj Var1 a s m,
+--       MonadMPState Var1 Char Bool t u m, MonadMPState Var1 a Char s t m,
+--       P.Monad (m u u), P.Monad (m t t)) =>
+--      m s u ()
+tsP1 = do putP Var1 'c' 
+          putP Var1 True
 
 
 tsP1r = runStateP Var1 () tsP1
@@ -319,10 +332,10 @@ tsP2
       MonadMPState Var2 Int Char t t1 m, P.Monad (m t1 t1),
       P.Monad (m u u)) =>
      m t u ()
-tsP2 = getP Var1 >>>= \x ->
-       getP Var2 >>>= \y ->
-       putP Var2 'c' >>>= \_ ->
-       putP Var1 (show (x+y+1::Int))
+tsP2 = do x <- getP Var1
+          y <- getP Var2 
+          putP Var2 'c' 
+          putP Var1 (show (x+y+1::Int))
 
 -- The following are inconsistent
 {-
@@ -335,12 +348,12 @@ tsP2' =
 -}
 
 -- See the inferred type: session type!
-tsP4 = getP Var1 >>>= \x0 ->
-      putP Var1 True >>>= \_ ->
-      getP Var1 >>>= \x ->
-      putP Var1 'a' >>>= \_ ->
-      getP Var1 >>>= \y ->
-      ret (x0,x,y)
+tsP4 = do x0 <- getP Var1
+          putP Var1 True
+          x <- getP Var1
+          putP Var1 'a'
+          y <- getP Var1
+          return (x0,x,y)
 
 tsP4r = runStateP Var1 () tsP4
 -- (((),True,'a'),'a')
@@ -401,13 +414,20 @@ tsP2r = runStateP Var2 2 $ runStateP1 Var1 1 tsP2
 -- tsP2'r = runStateP Var2 2 $ runStateP1 Var1 1 tsP2'
 
 
-tsP5 =  getP Var2   >>>= \x -> 
-        putP Var2 "str" >>>= \_ ->
-        tsP4        >>>= \r ->
-        getP Var2  >>>= \y ->
-        ret (r,x,y)
+tsP5 = do x <- getP Var2
+          putP Var2 "str"
+          r <- tsP4
+          y <- getP Var2
+          return (r,x,y)
 
 tsP5r = runStateP Var2 () $ runStateP1 Var1 1 tsP5 
 -- ((((1,True,'a'),(),"str"),'a'),"str")
 
 
+runAll :: P.IO ()
+runAll =  
+  P.print tsP1r  P.>>
+  P.print tsP2r  P.>>
+  P.print tsP4r  P.>>
+  P.print tsP5r
+  
