@@ -4,6 +4,8 @@
 {-# Language GADTs, FunctionalDependencies #-}
 {-# Language PolyKinds #-}
 
+{-# Language RebindableSyntax #-}
+
 -- Code for the article. The code is deliberately not general,
 -- to demonstrate the problem and the solution in the starkest form.
 -- The generalizations and optimizations have been described elsewhere.
@@ -12,7 +14,10 @@
 module ParamEff1 where
 
 import GHC.Exts (BOX)
-    
+import qualified Prelude as P
+import Prelude ( error, ($), fromInteger, Int, (+), show, Bool(..), (.), id
+               , String, Char, not, (>), const)
+  
 -- Name of variables (mutable cells)
 -- The names of all variables should be known statically
 
@@ -24,7 +29,7 @@ data Var1 = Var1; data Var2 = Var2
 -- (although this is less efficient)
 -- Modify takes the state transformer and applies it to
 -- the current state, returning the original state
-class Monad m => MonadMState var s m | var m -> s where
+class P.Monad m => MonadMState var s m | var m -> s where
   modify :: var -> (s->s) -> m s
 
 -- The familiar State operations are expressed as follows
@@ -33,7 +38,7 @@ get :: MonadMState var s m => var -> m s
 get var = modify var id
 
 put :: MonadMState var s m => var -> s -> m ()
-put var s = modify var (const s) >> return ()
+put var s = modify var (const s) P.>> P.return ()
             
 {-
             
@@ -200,13 +205,13 @@ data EffP f s1 s2 a where
 -- When two parameters are the same, Monadish is the ordinaru monad
 -- (That is why we did not have a ret method in Monadish)
 
-instance Functor (EffP f s s) where
+instance P.Functor (EffP f s s) where
     fmap = error "FINISHME"    
-instance Applicative (EffP f s s) where
+instance P.Applicative (EffP f s s) where
     pure = error "FINISHME"
     (<*>) = error "FINISHME"
     
-instance Monad (EffP f s s) where
+instance P.Monad (EffP f s s) where
   return = PureP
   PureP x        >>= k = k x
   ImpureP fx k1  >>= k = ImpureP fx (\x -> k1 x >>>= k)
@@ -215,8 +220,8 @@ instance Monadish (EffP f) where
   PureP x        >>>= k = k x
   ImpureP fx k1  >>>= k = ImpureP fx (\x -> k1 x >>>= k)
 
-ret :: (Monadish m, Monad (m s s)) => a -> m s s a
-ret = return
+ret :: (Monadish m, P.Monad (m s s)) => a -> m s s a
+ret = P.return
 
 -- Straightforward generalization of State
 
@@ -297,7 +302,7 @@ putP var s = modifyP var (const s) >>>= \_ -> ret ()
 -- Session-like type!
 tsP1 :: (TSProj Var1 Char t m, TSProj Var1 Bool u m, TSProj Var1 a s m,
       MonadMPState Var1 Char Bool t u m, MonadMPState Var1 a Char s t m,
-      Monad (m u u), Monad (m t t)) =>
+      P.Monad (m u u), P.Monad (m t t)) =>
      m s u ()
 tsP1 = putP Var1 'c' >>>= \_ ->
        putP Var1 True
@@ -311,8 +316,8 @@ tsP2
       TSProj Var1 String u m, TSProj Var1 Int t m, TSProj Var1 a t1 m,
       TSProj Var2 Int t m, TSProj Var2 Char t1 m,
       MonadMPState Var1 a String t1 u m,
-      MonadMPState Var2 Int Char t t1 m, Monad (m t1 t1),
-      Monad (m u u)) =>
+      MonadMPState Var2 Int Char t t1 m, P.Monad (m t1 t1),
+      P.Monad (m u u)) =>
      m t u ()
 tsP2 = getP Var1 >>>= \x ->
        getP Var2 >>>= \y ->

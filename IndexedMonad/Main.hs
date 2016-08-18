@@ -39,7 +39,7 @@ cr :: ((), Char)
 cr = runStateP prox1 'a' c
 
 -- | Here's an example where we use the TH-generated type-level index
--- together with the MonadMPState infrastructure above.
+-- together with the MonadMPState infrastructure from ParamEff1.hs
 d :: IO ()
 d = do pat @ $x <- freshRef "ignored"
        print =<< readRef x
