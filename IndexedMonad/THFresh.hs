@@ -13,10 +13,18 @@ import Data.Proxy
 import GHC.TypeLits
 import Data.IORef
 
-
 x :: Q Pat
-x = do let str = "x"
-       nm <- newName str
+x = go "x"
+
+y :: Q Pat
+y = go "y"
+
+z :: Q Pat
+z = go "z"
+
+go :: String -> Q Pat
+go str =
+    do nm <- newName str
        Loc{loc_filename,loc_start} <- location
        -- There must be a better way than this:
        -- Maybe a cryptographic hash?  Well, at least this is readable:

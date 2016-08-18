@@ -11,7 +11,7 @@
 -- The generalizations and optimizations have been described elsewhere.
 
 
-module ParamEff1 where
+module ParamEff1 (putP, runStateP) where
 
 import GHC.Exts (BOX)
 import qualified Prelude as P
