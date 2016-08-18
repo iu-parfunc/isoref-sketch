@@ -108,9 +108,6 @@ withMVarLock_ mv fn =
 sameMVarLock :: MVarLock s a -> MVarLock t a -> Bool
 sameMVarLock (MVarLock m1) (MVarLock m2) = m1 == m2
 
-sameMVarLock' :: STCastable a => MVarLock s a -> MVarLock t (CastState t a) -> Bool
-sameMVarLock' (MVarLock m1) (MVarLock m2) = m1 == unsafeCastState m2
-                                           
 --------------------------------------------------------------------------------
 -- Example datatype and usage:
 --------------------------------------------------------------------------------
@@ -174,7 +171,7 @@ class STCastable (a :: *) where
   -- May be helpful for avoiding ambiguity.
   type CastState s a :: * -- = res | res -> s
 
-  unsafeCastState :: a -> CastState t a
+  -- unsafeCastState :: a -> CastState t a
 
 instance STCastable a => STCastable (STRef s a) where
   type GetState (STRef s a)    = s
