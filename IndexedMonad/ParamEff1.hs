@@ -429,4 +429,22 @@ a = case (Proxy, "hi") of
 b = do $x <- freshRef "contents"
        v  <- readRef x
        return $ "yay: "++v
-         
+
+prox1 :: Proxy "hi"
+prox1 = Proxy
+
+-- c :: (Monad (m u u), MonadMPState (Proxy "hi") b Char s u m,
+--       TSProj (Proxy "hi") b s m, TSProj (Proxy "hi") Char u m) =>
+--      m s u ()
+c = putP prox1 'c' 
+
+cr :: ((), Char)
+cr = runStateP prox1 'a' c
+
+-- | Here's an example where we use the TH-generated type-level index
+-- together with the MonadMPState infrastructure above.
+d :: IO ()
+d = do pat @ $x <- freshRef "ignored"
+       print =<< readRef x
+       print $ runStateP (fst pat) "nil" $
+               putP (fst pat) "payload"
