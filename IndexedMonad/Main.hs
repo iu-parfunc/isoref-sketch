@@ -4,6 +4,10 @@
 {-# Language TemplateHaskell #-}
 {-# Language DataKinds #-}
 
+{-# Language NoMonomorphismRestriction #-}
+{-# Language FlexibleContexts, FlexibleInstances #-}
+-- {-# Language GADTs, FunctionalDependencies #-}
+
 module Main where
 
 import ParamEff1
@@ -25,6 +29,19 @@ newRef v =
   do r <- newIORef v
      return (Proxy, Ref r)
 
+-- | A "reference" that is just an index into the state.
+data RefInd (a::Symbol) = RefInd
+            
+new :: forall (s :: Symbol) a m . Monad m => 
+       m (Proxy s, RefInd s)
+new =
+  do return (Proxy, RefInd)
+
+new' :: forall (s :: Symbol) a . (Proxy s, RefInd s)
+new' = (Proxy, RefInd)
+            
+            
+            
 --------------------------------------------------------------------------------
 
 {- Changing the type of this Proxy yields this error message:
@@ -68,9 +85,54 @@ f = do $(fresh "quux") <- newRef "fval"
        v  <- readRef quux
        return $ "yay: "++v
 
+{-
+g = do -- $x <- new
+       let $x = new' 
+       putP x "payload"
+       x' <- getP x
+       return $ "yay: "++x'
+-}
+
+-- Needs RebindableSyntax:
+g = let $x = new' in    
+    putP x "payload" >>>= \_ ->
+    getP x           >>>= \x' ->
+    ret $ "yay: "++x'
+
+-- We can't actually run g.        
+-- And... running with the wrong state results in a cryptic error: 
+-- gr :: (String, String)
+-- gr = runStateP Var1 () g 
+
+-- | We can do this instead, but this doesn't really give us the
+-- lexical scope that we want.
+h = let $x = new' in
+    runStateP x "unused" $ 
+      putP x "payload" >>>= \_ ->
+      getP x           >>>= \x' ->
+      ret ()
+
+myRun fn = runStateP r (error "unusued initial state") (fn (Proxy,r))
+  where r = RefInd                                                            
+
+-- i = myRun $ \ $x ->
+--       getP x
+            
+data Var1 = Var1
+
+-- No instance for (Monad (m0 u0 u0)) arising from a use of ‘putP’
+--     The type variables ‘m0’, ‘u0’ are ambiguous
+-- tsP1 = putP Var1 'c'  >>>= \_ ->
+--        putP Var1 True
+
 main = do
    print a
    print =<< b
    print cr
    d
    print =<< f
+
+data Ref2 p = Ref2 
+
+
+           

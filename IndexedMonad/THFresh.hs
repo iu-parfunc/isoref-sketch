@@ -12,6 +12,7 @@ import Language.Haskell.TH
 import Data.Proxy
 import GHC.TypeLits
 import Data.IORef
+import ParamEff1
 
 -- | Premade identifiers, ready to go.
 x :: Q Pat

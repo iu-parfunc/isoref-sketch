@@ -11,7 +11,7 @@
 -- The generalizations and optimizations have been described elsewhere.
 
 
-module ParamEff1 (putP, runStateP) where
+module ParamEff1 (putP, getP, runStateP, (>>>=), ret) where
 
 import GHC.Exts (BOX)
 import qualified Prelude as P
@@ -297,6 +297,7 @@ instance MonadMPState var s1 s2 s1 s2 (EffP (StateP var)) where
 getP :: (Monadish m, TSProj var s t m, MonadMState var s (m t t)) =>
         var -> m t t s
 getP       = get
+
 putP var s = modifyP var (const s) >>>= \_ -> ret ()
 
 (>>=) :: Monadish m => m s t a -> (a -> m t u b) -> m s u b
