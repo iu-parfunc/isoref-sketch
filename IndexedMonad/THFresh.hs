@@ -2,38 +2,38 @@
 {-# Language PatternSynonyms #-}
 {-# Language ScopedTypeVariables #-}
 
+{-# Language KindSignatures #-}
+{-# Language DataKinds  #-}
 
 module THFresh where
 
 import Language.Haskell.TH
 import Data.Proxy
+import GHC.TypeLits
+import Data.IORef
 
--- do $x         <- newIso
---    $(fresh y) <- newIso
 
--- Pattern (_:: Var "x", x )
---  newIso :: MonadState v s m =>  m (Proxy (Var v), IsoRef Double)
- 
+-- FIXME: the type level string must encode the static location of the identifier!
 x :: Q Pat
--- x = return $ LitP (TupP ())
--- x = return $ LitP (CharL 'a')
 x = do nm <- newName "x"
-       return (x' nm)
+       return $ TupP [ proxPat $ LitT (StrTyLit "x")
+                     , VarP nm
+                     ]
 
-x' nm = TupP [ proxPat $ ConT ''Int
-             -- , VarP 'x -- "Qualified name in binding position"
-             , VarP nm
-             ]
+-- FIXME: Pair should probably be represented by an custom datatype to
+-- give better error messages.
 
 proxPat :: Type -> Pat
 proxPat ty = SigP (ConP 'Proxy []) (AppT (ConT ''Proxy) ty)
 
-pattern Blah = (Proxy::Proxy Int)
+newtype Ref a = Ref (IORef a)
 
-pattern Goo = ("hi",333)
+readRef :: Ref a -> IO a
+readRef (Ref r) = readIORef r
 
-y = case ("hi",33) of Goo -> 99
-
-z = case (Proxy::Proxy Int) of Blah -> 99
--- z = case (Proxy::Proxy Double) of Blah -> 99
-
+-- | Return a reference which is identified by a type level string.
+freshRef :: forall (s :: Symbol) a .
+         a -> IO (Proxy s, Ref a)
+freshRef v =
+  do r <- newIORef v
+     return (Proxy, Ref r)

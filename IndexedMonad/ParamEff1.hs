@@ -6,6 +6,8 @@
 {-# Language ScopedTypeVariables, KindSignatures #-}
 
 {-# Language TemplateHaskell #-}
+{-# Language DataKinds #-}
+
 
 -- Code for the article. The code is deliberately not general,
 -- to demonstrate the problem and the solution in the starkest form.
@@ -423,5 +425,10 @@ foo = do $x <- return 'a'
 -- zz = case (Proxy::Proxy Int) of $x -> 99    -- ok
 -- z  = case (Proxy::Proxy Double) of $x -> 99 -- type error
 
-zz = case (Proxy::Proxy Int, "hi") of
+zz = case (Proxy, "hi") of
        $x -> x
+
+zzz = do $x <- freshRef "contents"
+         v  <- readRef x
+         return $ "yay: "++v
+         
