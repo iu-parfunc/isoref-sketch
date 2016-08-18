@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# Language TemplateHaskell #-}
 {-# Language PatternSynonyms #-}
 {-# Language ScopedTypeVariables #-}
@@ -13,10 +14,16 @@ import GHC.TypeLits
 import Data.IORef
 
 
--- FIXME: the type level string must encode the static location of the identifier!
 x :: Q Pat
-x = do nm <- newName "x"
-       return $ TupP [ proxPat $ LitT (StrTyLit "x")
+x = do let str = "x"
+       nm <- newName str
+       Loc{loc_filename,loc_start} <- location
+       -- There must be a better way than this:
+       -- Maybe a cryptographic hash?  Well, at least this is readable:
+       let unique = str ++ "_" ++ show loc_start ++"_"++ loc_filename
+       -- A custom error presentation could perhaps parse them back out....
+       -- Another idea would be to put a wrapper around this and change how they print.
+       return $ TupP [ proxPat $ LitT (StrTyLit unique)
                      , VarP nm
                      ]
 

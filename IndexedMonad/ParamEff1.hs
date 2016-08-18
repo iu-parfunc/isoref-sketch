@@ -416,19 +416,17 @@ tsP5r = runStateP Var2 () $ runStateP1 Var1 1 tsP5
 -- Experimenting with TH and pattern synonyms.
 --------------------------------------------------------------------------------
 
-{-
-foo :: IO Int 
-foo = do $x <- return 'a'
-         return 33
+{- Changing the type of this Proxy yields this error message:
+
+    Couldn't match kind ‘*’ with ‘Symbol’
+    Expected type: Proxy
+                     "x_(422,8)_/Users/rrnewton/working_copies/msr-visit/isoref-sketch/IndexedMonad/ParamEff1.hs"
+      Actual type: Proxy Int
 -}
-
--- zz = case (Proxy::Proxy Int) of $x -> 99    -- ok
--- z  = case (Proxy::Proxy Double) of $x -> 99 -- type error
-
-zz = case (Proxy, "hi") of
+a = case (Proxy, "hi") of 
        $x -> x
 
-zzz = do $x <- freshRef "contents"
-         v  <- readRef x
-         return $ "yay: "++v
+b = do $x <- freshRef "contents"
+       v  <- readRef x
+       return $ "yay: "++v
          
