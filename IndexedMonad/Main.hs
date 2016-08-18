@@ -9,8 +9,22 @@ module Main where
 import ParamEff1
 import THFresh
 import Data.Proxy
-    
+import Data.IORef
+import GHC.TypeLits
+  
 -- Experimenting with TH and pattern synonyms.
+--------------------------------------------------------------------------------
+
+readRef :: Ref a -> IO a
+readRef (Ref r) = readIORef r
+
+-- | Return a reference which is identified by a type level string.
+newRef :: forall (s :: Symbol) a .
+         a -> IO (Proxy s, Ref a)
+newRef v =
+  do r <- newIORef v
+     return (Proxy, Ref r)
+
 --------------------------------------------------------------------------------
 
 {- Changing the type of this Proxy yields this error message:
@@ -23,7 +37,7 @@ import Data.Proxy
 a = case (Proxy, "hi") of 
        $x -> x
 
-b = do $x <- freshRef "contents"
+b = do $x <- newRef "contents"
        v  <- readRef x
        return $ "yay: "++v
 
@@ -41,7 +55,7 @@ cr = runStateP prox1 'a' c
 -- | Here's an example where we use the TH-generated type-level index
 -- together with the MonadMPState infrastructure from ParamEff1.hs
 d :: IO ()
-d = do pat @ $x <- freshRef "ignored"
+d = do pat @ $x <- newRef "ignored"
        print =<< readRef x
        print $ runStateP (fst pat) "nil" $
                putP (fst pat) "payload"

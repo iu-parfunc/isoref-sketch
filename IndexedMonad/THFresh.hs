@@ -34,21 +34,12 @@ go str =
        return $ TupP [ proxPat $ LitT (StrTyLit unique)
                      , VarP nm
                      ]
-
 -- FIXME: Pair should probably be represented by an custom datatype to
 -- give better error messages.
+
+
 
 proxPat :: Type -> Pat
 proxPat ty = SigP (ConP 'Proxy []) (AppT (ConT ''Proxy) ty)
 
 newtype Ref a = Ref (IORef a)
-
-readRef :: Ref a -> IO a
-readRef (Ref r) = readIORef r
-
--- | Return a reference which is identified by a type level string.
-freshRef :: forall (s :: Symbol) a .
-         a -> IO (Proxy s, Ref a)
-freshRef v =
-  do r <- newIORef v
-     return (Proxy, Ref r)
