@@ -39,7 +39,9 @@ new =
 
 new' :: forall (s :: Symbol) a . (Proxy s, RefInd s)
 new' = (Proxy, RefInd)
-            
+
+proxSym :: forall (s :: Symbol) . Proxy s
+proxSym = Proxy
             
             
 --------------------------------------------------------------------------------
@@ -81,7 +83,7 @@ d = do pat @ $x <- newRef "ignored"
 --        v  <- readRef x
 --        return $ "yay: "++v
 
-f = do $(fresh "quux") <- newRef "fval"
+f = do $(fresh "quux") <- newRef "fval"b
        v  <- readRef quux
        return $ "yay: "++v
 
@@ -113,10 +115,17 @@ h = let $x = new' in
       ret ()
 
 myRun fn = runStateP r (error "unusued initial state") (fn (Proxy,r))
-  where r = RefInd                                                            
+  where r = RefInd
 
--- i = myRun $ \ $x ->
---       getP x
+myRun2 :: forall (s :: Symbol) s1 s2 a .
+          ((Proxy s) -> EffP (StateP (Proxy s)) s1 s2 a)
+       -> (a, s2)
+myRun2 fn = runStateP p (error "unusued initial state") (fn (p,p))
+  where p = Proxy
+
+-- i = myRun2 $ \ $x -> getP x
+
+
             
 data Var1 = Var1
 
